@@ -58,9 +58,9 @@ def main(saveas='',clp=[1,1,1],orootsdir = '/Users/user/Documents/Ox/roots/roots
     n_uptake = n_uptake/1000 #mmol/cm2/hour
     n_uptake = n_uptake/1e+8 #mmol/um2/hour
     n_uptake = n_uptake * sa_pergDW #mmol/gDW/hour
-
-    #epi00_model.reactions.Nitrate_ec_epi00.upper_bound = float(n_uptake)
-    #epi00_model.reactions.Nitrate_ec_epi00.lower_bound = float(n_uptake)
+    print('N bound: ',n_uptake)
+    epi00_model.reactions.Nitrate_ec_epi00.upper_bound = float(n_uptake)
+    epi00_model.reactions.Nitrate_ec_epi00.lower_bound = float(n_uptake)
 
     p_uptake = 0.0555 #uMol/cm2/day
     p_uptake = p_uptake/24 #uMol/cm2/hour
@@ -218,7 +218,7 @@ def main(saveas='',clp=[1,1,1],orootsdir = '/Users/user/Documents/Ox/roots/roots
     #     ub= 0)
     # tissue_model.add_cons_vars(ATPase_cells_flux)
 
-    for rxn in model.reactions:
+    for rxn in tissue_model.reactions:
         if 'L_LACTATE_ec_' in rxn.id:
             metlist=[x.id for x in rxn.metabolites]
             for met in metlist:
@@ -244,7 +244,7 @@ def main(saveas='',clp=[1,1,1],orootsdir = '/Users/user/Documents/Ox/roots/roots
     ph_carbon_restr = Reaction('Phloem_carbon_import')
     tissue_model.add_reaction(ph_carbon_restr)
     # This number is from Lohaus 2000. Flux through ph_caron_restr tells us how much carbon is being imported relative to this estimate.
-    ph_carbon_restr.add_metabolites({carboncountmet:-3.79682498})
+    ph_carbon_restr.add_metabolites({carboncountmet:-3.79682498*4.2})
     ph_carbon_restr.upper_bound=1000
     ph_carbon_restr.lower_bound=0
 
@@ -326,7 +326,7 @@ def set_maintenance_hilary(model, respiration_rate, cell_dimensions,verbose=True
         i=i+it
         tempModel.reactions.get_by_id("ATPase_tx_per00").lower_bound = i
         # tempModel.reactions.get_by_id("ATPase_tx_per00").upper_bound = i
-        solution = flux_analysis.parsimonious.pfba(tempModel)
+        solution = tempModel.optimize()
         CO2_tx_flux = solution.fluxes.get("CO2_tx_epi00")
         co2_vals[i]=(vol_adj_resp_rate - CO2_tx_flux)/vol_adj_resp_rate
         if verbose:
@@ -590,6 +590,7 @@ def apoplast_transport_reactions(model, comp, model_tags):
             ion = f"{i}_c_{tag}"
             ion_met = model.metabolites.get_by_id(ion)
             reaction = Reaction(ion + "_apoplast_loading_" + comp)
+            model.add_reaction(reaction)
             reaction.name = ion + " loading into apoplast"
             reaction.add_metabolites({
             ion_met: -1.0,
@@ -597,13 +598,13 @@ def apoplast_transport_reactions(model, comp, model_tags):
             })
             reaction.lower_bound = 0
             reaction.upper_bound = 1000
-            model.add_reaction(reaction)
 
             #unloading from apoplast
             ion_ap = model.metabolites.get_by_id(f"{i}_{comp}")
             ion = f"{i}_c_{tag}"
             ion_met = model.metabolites.get_by_id(ion)
             reaction = Reaction(ion + "_apoplast_unloading_" + comp)
+            model.add_reaction(reaction)
             reaction.name = ion + " unloading from apoplast"
             reaction.add_metabolites({
             ion_ap: -1.0,
@@ -613,7 +614,6 @@ def apoplast_transport_reactions(model, comp, model_tags):
             })
             reaction.lower_bound = 0
             reaction.upper_bound = 1000
-            model.add_reaction(reaction)
 
 # Add pFBA obj to model that doesn't include...
 def rootspFBAobj(tissue_model,exclude_from_pFBA=[]):
