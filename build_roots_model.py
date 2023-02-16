@@ -503,9 +503,10 @@ def make_expanding_cell(model, cell_dimensions, osmotic_constraints, model_tag, 
             model.add_reaction(rxn)
 
     #Set Vv and Vc equal to vacuolar and cytoplasmic volumes at the end of the time period (like Sanu did)
-    Vv = rootslice.loc[model_tag, "final_vac_dnut_vol"]
-    Vc = rootslice.loc[model_tag, "final_cytoplasm_dnut_vol"]
-    Vcell = rootslice.loc[model_tag, "final_tot_dnut_vol"]
+    # This wrong. Changed to change in vol
+    Vv = rootslice.loc[model_tag, "change_vac_dnut_vol"]
+    Vc = rootslice.loc[model_tag, "change_cytoplasm_dnut_vol"]
+    Vcell = rootslice.loc[model_tag, "change_tot_dnut_vol"]
 
     #sets ratio based on eqn 2 in paper
     rxn = Reaction("VacCytRatio" + model_tag)
