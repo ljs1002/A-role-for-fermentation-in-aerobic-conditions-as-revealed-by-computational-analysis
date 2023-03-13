@@ -627,7 +627,8 @@ def rootspFBAobj(tissue_model,exclude_from_pFBA=[]):
     #exclude_from_pFBA
 
     Dcoeffs = {}
-    sum_var = tissue_model.problem.Variable('sumvar')
+    sum_var = tissue_model.problem.Variable(name='sumvar')
+    # print(sum_var.name)
     tissue_model.add_cons_vars(sum_var)
     for ii in [rxn.id for rxn in tissue_model.reactions if rxn.id not in exclude_from_pFBA]:
         Dcoeffs[tissue_model.reactions.get_by_id(ii).forward_variable]=1
@@ -635,10 +636,57 @@ def rootspFBAobj(tissue_model,exclude_from_pFBA=[]):
     Dcoeffs[sum_var]=-1
     Dcons = tissue_model.problem.Constraint(0,
         lb=0,
-        ub=0)
+        ub=0,
+        name='rootspFBAObj')
     tissue_model.add_cons_vars([Dcons])
     tissue_model.solver.update()
     Dcons.set_linear_coefficients(coefficients=Dcoeffs)
     pfbaobj=tissue_model.problem.Objective(sum_var,
             direction='min')
     tissue_model.objective = pfbaobj
+
+def rootsConstrProtons(tissue_model,excl=[]):
+    metroot = 'PROTON_'
+    cells=['epi00', 'cor00', 'cor01', 'cor02', 'cor03', 'cor04', 'cor05', 'cor06', 'cor07', 'end00', 'per00']
+    for cell in cells:
+        mets = [met for met in tissue_model.metabolites if metroot in met.id and cell in met.id and not any([x in met.id for x in ['_e_','_ph_','_xy_']+excl])]
+        Dcoeffs = {}
+        prot_var = tissue_model.problem.Variable(name='protsumvar_'+cell)
+        tissue_model.add_cons_vars(prot_var)
+        for met in mets:
+            for rxn in met.reactions:
+                Dcoeffs[rxn.forward_variable]=rxn.get_coefficient(met)
+                Dcoeffs[rxn.reverse_variable]=-rxn.get_coefficient(met)
+        Dcons = tissue_model.problem.Constraint(0,
+            lb=0,
+            ub=0,
+            name='prot_sum_constr_'+cell)
+        tissue_model.add_cons_vars([Dcons])
+        tissue_model.solver.update()
+        Dcons.set_linear_coefficients(coefficients=Dcoeffs)
+        print(Dcons)
+        print(Dcons.name)
+    return tissue_model
+    
+from cleaner_roots import *
+def add_maint_constraints(rmodel_in,split=0):
+    if split:
+        rmodel=quietcopy(rmodel_in)
+    else:
+        rmodel = rmodel_in
+
+    rxns = ['ATPase_tx','NADPHoxc_tx','NADPHoxp_tx','NADPHoxm_tx']
+    cells = ['_'+rxn.id.split('_')[-1] for rxn in rmodel.reactions if 'CELLULOSE_SYNTHASE_UDP_FORMING_RXN_c' in rxn.id]
+    # nadp_rxns = [rxn for rxn in rmodel.reactions if 'NADPHox' in rxn.id]
+    for cell in cells:
+        ATP_NAD_met = Metabolite('ATPase_NADPHoxidase_constraint_c'+cell,compartment='c'+cell)
+        rmodel.add_metabolites({ATP_NAD_met})
+
+        rmodel.reactions.get_by_id(rxns[0]+cell).add_metabolites({ATP_NAD_met:1})
+        for rxn in rxns[1:]:
+            rmodel.reactions.get_by_id(rxn+cell).add_metabolites({ATP_NAD_met:-3})
+        NAD_balcp_constr = rmodel.problem.Constraint(rmodel.reactions.get_by_id(rxns[1]+cell).forward_variable-rmodel.reactions.get_by_id(rxns[2]+cell).forward_variable,lb=0,ub=0,name='NAD_balcp'+cell)
+        NAD_balcm_constr = rmodel.problem.Constraint(rmodel.reactions.get_by_id(rxns[1]+cell).forward_variable-rmodel.reactions.get_by_id(rxns[3]+cell).forward_variable,lb=0,ub=0,name='NAD_balcm'+cell)
+        rmodel.add_cons_vars([NAD_balcp_constr,NAD_balcm_constr])
+        rmodel.solver.update()
+    return rmodel
