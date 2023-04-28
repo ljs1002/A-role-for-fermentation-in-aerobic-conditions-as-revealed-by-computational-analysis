@@ -464,7 +464,7 @@ def make_expanding_cell(model, cell_dimensions, osmotic_constraints, model_tag, 
     #organic pseudometabolites in vacuole
     for label, row in osm_constraints.iterrows():
         METB = Metabolite(row["met_id"]+"_b" + model_tag, compartment = "b"+model_tag, charge = model.metabolites.get_by_id(row["met_id"]+"_c" + model_tag).charge)
-        if row["charge_form"] != "none":
+        if row["charge_form"] != "none" and 'AMMONIUM' not in row["met_id"]:
             METV = model.metabolites.get_by_id(row["met_id"]+"_v" + model_tag)
             aMETV = model.metabolites.get_by_id("a"+row["met_id"]+"_v" + model_tag)
             charge = (METV.charge*row["met_stoyk"]*-1)+(aMETV.charge*row["amet_stoyk"]*-1)
@@ -550,23 +550,24 @@ def apoplast_transport_reactions(model, comp, model_tags):
         except:
             f"{i} has already been added to {comp}"
 
-    # add proton ATPase and transport reaction from each cell type to apoplast
-    for tag in model_tags:
-        #add to all cells a proton ATPase to pump protons into apoplast
-        rxn = Reaction("PROTON_ATPase_ap_"+tag)
-        rxn.name = "PROTON_ATPase_ap_"+tag
-        rxn.add_metabolites({
-            model.metabolites.get_by_id("ATP_c_"+tag): -1.0,
-            model.metabolites.get_by_id("PROTON_c_"+tag): -1.0,
-            model.metabolites.get_by_id("WATER_c_"+tag): 1.0,
-            model.metabolites.get_by_id("aATP_c_"+tag): 1.0,
-            model.metabolites.get_by_id("ADP_c_"+tag): 1.0,
-            model.metabolites.get_by_id("PROTON_"+comp): 1.0,
-            model.metabolites.get_by_id("Pi_c_"+tag): 1.0,
-            model.metabolites.get_by_id("aADP_c_"+tag): 1.0,
-            model.metabolites.get_by_id("aPi_c_"+tag): 1.0,
-            })
-        model.add_reaction(rxn)
+    # # add proton ATPase and transport reaction from each cell type to apoplast
+    # # Note this does not appear to be in original code...
+    # for tag in model_tags:
+    #     #add to all cells a proton ATPase to pump protons into apoplast
+    #     rxn = Reaction("PROTON_ATPase_ap_"+tag)
+    #     rxn.name = "PROTON_ATPase_ap_"+tag
+    #     rxn.add_metabolites({
+    #         model.metabolites.get_by_id("ATP_c_"+tag): -1.0,
+    #         model.metabolites.get_by_id("PROTON_c_"+tag): -1.0,
+    #         model.metabolites.get_by_id("WATER_c_"+tag): 1.0,
+    #         model.metabolites.get_by_id("aATP_c_"+tag): 1.0,
+    #         model.metabolites.get_by_id("ADP_c_"+tag): 1.0,
+    #         model.metabolites.get_by_id("PROTON_"+comp): 1.0,
+    #         model.metabolites.get_by_id("Pi_c_"+tag): 1.0,
+    #         model.metabolites.get_by_id("aADP_c_"+tag): 1.0,
+    #         model.metabolites.get_by_id("aPi_c_"+tag): 1.0,
+    #         })
+    #     model.add_reaction(rxn)
 
         #if no uptake cost
         for i in ["FeIII", "MGII", "CAII", "FeII", "WATER", "CARBON_DIOXIDE"]:
@@ -590,7 +591,7 @@ def apoplast_transport_reactions(model, comp, model_tags):
             ion_ap = model.metabolites.get_by_id(f"{i}_{comp}")
             ion = f"{i}_c_{tag}"
             ion_met = model.metabolites.get_by_id(ion)
-            reaction = Reaction(ion + "_apoplast_loading_" + comp)
+            reaction = Reaction(ion + "_apoplast_exchange_" + comp)
             model.add_reaction(reaction)
             reaction.name = ion + " loading into apoplast"
             reaction.add_metabolites({
@@ -664,8 +665,8 @@ def rootsConstrProtons(tissue_model,excl=[]):
         tissue_model.add_cons_vars([Dcons])
         tissue_model.solver.update()
         Dcons.set_linear_coefficients(coefficients=Dcoeffs)
-        print(Dcons)
-        print(Dcons.name)
+        # print(Dcons)
+        # print(Dcons.name)
     return tissue_model
     
 from cleaner_roots import *

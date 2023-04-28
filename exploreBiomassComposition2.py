@@ -5,6 +5,7 @@ from cobra.flux_analysis.parsimonious import pfba
 from cobra.flux_analysis.variability import *
 from cobra import io
 import numpy as np
+import pickle as pkl
 # from datetime import datetime, date, time
 def mainEBC2(fixphloem=1,testrange = None):
     # Load model
@@ -16,65 +17,29 @@ def mainEBC2(fixphloem=1,testrange = None):
     # modelpwy='roots_model-1-1-1.xml'
     modelpwy='roots_model_current.xml'
     rmodel=io.read_sbml_model(rootsdir+modelpwy)
-    
-    # # Remove ammonium as an osmolyte
-    # for rxn in rmodel.reactions:
-    #     if 'AMMONIUM' in rxn.id and 'biomass' in rxn.id:
-    #         # print(rxn.id, rxn.reaction)
-    #         rmodel.remove_reactions({rxn})
-    #     # Stop Fe transfer through apoplast
-    #     if 'FeII' in rxn.id and 'apoplast_exchange' in rxn.id:
-    #         rmodel.remove_reactions({rxn})
-    #     # Prevent PRO import
-    #     if 'PRO_ph' in rxn.id:
-    #         rxn.upper_bound=0
-    # # Prevent some symp transport
-    # no_symp_transport = ['ATP','UTP','GTP','PROTON','UDP_GLUCOSE','CARBON_DIOXIDE','GDP_D_GLUCOSE','CPD_14553','OXYGEN_','AMP','NADH','FeII','SUPER_OXIDE','PPI']
-    # for rxn in rmodel.reactions:
-    #     if 'Transfer' in rxn.id and any([x in rxn.id for x in no_symp_transport]):
-    #         rxn.upper_bound=0
-    #         rxn.lower_bound=0
-    #         # print(rxn.id)
-    # if fixphloem:
-    #     # Remove phloem metabolites not listed and add ratio constraint to remaining phloem mets (30% sucrose to 70% aas)
-    #     ph_ratios = pd.read_csv(rootsdir+'Phloem_composition_z_maize.csv')
-    #     rmodel.remove_reactions([rxn for rxn in rmodel.reactions if 'EX_X_' in rxn.id and '_ph_' in rxn.id and not any([x in rxn.id for x in list(ph_ratios['met_id'])+['PROTON']])])
-    #     phloem_ratio_met=Metabolite('phloem_ratio_met')
-    #     rxn=rmodel.reactions.EX_X_SUCROSE_ph_per00
-    #     rxn.add_metabolites({phloem_ratio_met:-0.3})
-    #     for rxn in rmodel.reactions:
-    #         if 'EX_X_' in rxn.id and '_ph_' in rxn.id and not any([x in rxn.id for x in ['EX_X_SUCROSE_ph_per00','PROTON']]):
-    #             # print(rxn.id)
-    #             rxn.add_metabolites({phloem_ratio_met:0.7})
-    # for rxn in rmodel.reactions:
-    #     if 'L_LACTATEDEHYDROG_RXN_c' in rxn.id:
-    #         rxn.upper_bound=0
-    #         rxn.lower_bound=0
-    # rxn=Reaction('Dummy_lact_dehydrog_cor00')
-    # rmodel.add_reaction(rxn)
-    # lrxn=rmodel.reactions.L_LACTATEDEHYDROG_RXN_c_cor00
-    # for met in lrxn.metabolites:
-    #     if 'PROTON' not in met.id:
-    #         rxn.add_metabolites({met.id:lrxn.get_coefficient(met.id)})
-    # rxn.upper_bound=1000
-    # rxn.lower_bound=-1000
-    # Define obj
-    rootspFBAobj(rmodel)
-    rootsConstrProtons(rmodel)
+    print('loaded')
+    temp=rootspFBAobj(rmodel)
+    temp=rootsConstrProtons(rmodel)
+    print('constrs added')
     # rmodel.objective = 'Phloem_import_reaction'
     biomass_rxns = [rxn.id for rxn in rmodel.reactions if 'Biomass_expanding_cell' in rxn.id]
-    fva_sol=flux_variability_analysis(rmodel)
+
+    solo=rmodel.optimize()
+    rmodel.reactions.Phloem_carbon_import.lower_bound=solo['Phloem_carbon_import']
+    rmodel.reactions.Phloem_carbon_import.upper_bound=solo['Phloem_carbon_import']
+    # fva_sol=flux_variability_analysis(rmodel)
     data={'reaction_id':[x.id for x in rmodel.reactions],
         'cell':['_'.join(x.id.split('_')[-2:]) if ('_l' in x.id or '_d' in x.id) else '' for x in rmodel.reactions],
         'subsystem':[x.notes['SUBSYSTEM']  if 'SUBSYSTEM' in str(x.notes) else '' for x in rmodel.reactions],
         'reaction':[x.reaction for x in rmodel.reactions],
-        'fva_min':[fva_sol.minimum[x.id] for x in rmodel.reactions],
-        'fva_max':[fva_sol.maximum[x.id] for x in rmodel.reactions]}
+        '1-1-1':[solo[x.id] for x in rmodel.reactions]}
+        # 'fva_min':[fva_sol.minimum[x.id] for x in rmodel.reactions],
+        # 'fva_max':[fva_sol.maximum[x.id] for x in rmodel.reactions]}
     
 
     # Change biomass proportions
     if not testrange:
-        test_rats = [1,1.2,1.5]
+        test_rats = [1.2,1.5]
     else:
         test_rats = np.linspace(1,testrange[0],testrange[1])
     # for ii in test_rats:
@@ -86,35 +51,104 @@ def mainEBC2(fixphloem=1,testrange = None):
     #                 sol=pfba(new_model)
     #                 data['-'.join([str(x) for x in [ii,jj,kk]])]=[sol[x.id] for x in rmodel.reactions]
 
-    new_model=rmodel.copy()
+    new_model=rmodel
+    # with open('roots_'+label+'.pkl','wb') as file:
+    #     pkl.dump(sol,file)
+    original_biomass = [new_model.reactions.get_by_id(biomass_rxns[3]).get_coefficient(y.id) for y in new_model.reactions.get_by_id(biomass_rxns[3]).metabolites]
     for ii in range(3):
         for jj in test_rats:
             these_rats = [1,1,1]
             these_rats[ii]=jj
             for rxn in biomass_rxns:
-                changeBiomassComposition(new_model.reactions.get_by_id(rxn),these_rats)
-            sol=pfba(new_model)
+                changeBiomassComposition_eBC2(new_model.reactions.get_by_id(rxn),these_rats)
+            mid_biomass = [new_model.reactions.get_by_id(biomass_rxns[3]).get_coefficient(y.id) for y in new_model.reactions.get_by_id(biomass_rxns[3]).metabolites]
+            mid_biomass = [mid_biomass[it]/original_biomass[it] for it in range(3)]
+            sol=new_model.optimize()
+            print(these_rats)
             data['-'.join([str(x) for x in these_rats])]=[sol[x.id] for x in rmodel.reactions]
             for rxn in biomass_rxns:
-                resetBiomassComposition(new_model.reactions.get_by_id(rxn),these_rats)
+                resetBiomassComposition_eBC2(new_model.reactions.get_by_id(rxn),these_rats)
     new_model=add_maint_constraints(new_model)
-    for ii in [0,0.2,0.5]:
+    late_biomass=[new_model.reactions.get_by_id(biomass_rxns[3]).get_coefficient(y.id) for y in new_model.reactions.get_by_id(biomass_rxns[3]).metabolites]
+    # if late_biomass != original_biomass:
+    #     print('Rescale problem:')
+    #     print(these_rats)
+    #     print(original_biomass)
+    #     print(mid_biomass)
+    #     print(late_biomass)
+    print('reset attempt')
+    ub={}
+    lb={}
+    for rxn in new_model.reactions:
+        ub[rxn.id]=rxn.upper_bound
+        lb[rxn.id]=rxn.lower_bound
+        rxn.upper_bound=solo[rxn.id]
+        rxn.lower_bound=solo[rxn.id]
+    sol_temp=new_model.optimize()
+    for rxn in new_model.reactions:
+        rxn.upper_bound=ub[rxn.id]
+        rxn.lower_bound=lb[rxn.id]
+    print('reset over')
+        
+    for ii in np.linspace(0,1.8,5):
         new_model.reactions.get_by_id("ATPase_balancer").lower_bound=ii
-        sol=pfba(new_model)
+        sol=new_model.optimize()
         data[ii]=[sol[x.id] for x in rmodel.reactions]
     df=pd.DataFrame(data)
     # now = datetime.now().strftime('%Y_%m_%d')
     df.to_csv('/Users/user/Documents/Ox/roots/Spreadsheets/BiomassComposition2'+fixphloem+'.csv')    
 
-def changeBiomassComposition(rxn,ratios):
+def changeBiomassComposition_eBC2(rxn,ratios):
+    # original_rxn = [rxn.get_coefficient(y.id) for y in rxn.metabolites]
     cellulose_met = [met for met in rxn.metabolites if 'Cellulose' in met.id][0]
     lipid_met = [met for met in rxn.metabolites if 'L_PHOSPHATIDATE' in met.id][0]
     protein_met = [met for met in rxn.metabolites if 'Protein' in met.id][0]
+    mets = [cellulose_met,lipid_met,protein_met]
+    # original_rxn = [rxn.get_coefficient(met) for met in mets]
+    
+    # print(rxn.reaction)
+    # print('cBC: ',rxn.get_coefficient(cellulose_met),ratios[0],(ratios[0]-1),rxn.get_coefficient(cellulose_met)*(ratios[0]-1))
     rxn.add_metabolites({cellulose_met:rxn.get_coefficient(cellulose_met)*(ratios[0]-1),
     lipid_met:rxn.get_coefficient(lipid_met)*(ratios[1]-1),
     protein_met:rxn.get_coefficient(protein_met)*(ratios[2]-1)})
+    # new_rxn = [rxn.get_coefficient(met) for met in mets]
+    # print(rxn.reaction)
+    # print([rxn.get_coefficient(met) for met in mets])
+    # print(mets)
+    # if [round(new_rxn[it]/original_rxn[it],4) for it in range(len(original_rxn))]!=ratios:
+    #     print('cBC problem!',rxn.id)
+    #     print([round(new_rxn[it]/original_rxn[it],4) for it in range(len(original_rxn))])
+    #     print(ratios)
+    #     print(original_rxn)
+    #     print(new_rxn)
 
-def resetBiomassComposition(rxn,ratios):
+def resetBiomassComposition_eBC2(rxn,ratios):
+    # original_rxn = [rxn.get_coefficient(y.id) for y in rxn.metabolites]
+    cellulose_met = [met for met in rxn.metabolites if 'Cellulose' in met.id][0]
+    lipid_met = [met for met in rxn.metabolites if 'L_PHOSPHATIDATE' in met.id][0]
+    protein_met = [met for met in rxn.metabolites if 'Protein' in met.id][0]
+    rxn.add_metabolites({cellulose_met:rxn.get_coefficient(cellulose_met)*(1-ratios[0])/ratios[0],
+    lipid_met:rxn.get_coefficient(lipid_met)*(1-ratios[1])/ratios[1],
+    protein_met:rxn.get_coefficient(protein_met)*(1-ratios[2])/ratios[2]})
+    # new_rxn = [rxn.get_coefficient(cellulose_met),rxn.get_coefficient(lipid_met),rxn.get_coefficient(protein_met)]
+    # if [round(original_rxn[it]/new_rxn[it],4) for it in range(len(original_rxn))]!=ratios:
+    #     print('rBC problem!',rxn.id)
+    #     print([round(original_rxn[it]/new_rxn[it],4) for it in range(len(original_rxn))])
+    #     print(ratios)
+    #     print(original_rxn)
+    #     print(new_rxn)
+        
+def changeBiomassComposition2(model,rxn,ratios):
+    cellulose_met = [met for met in rxn.metabolites if 'Cellulose' in met.id][0]
+    lipid_met = [met for met in rxn.metabolites if 'L_PHOSPHATIDATE' in met.id][0]
+    protein_met = [met for met in rxn.metabolites if 'Protein' in met.id][0]
+    new_rxn = rxn.copy()
+    new_rxn.add_metabolites({cellulose_met:rxn.get_coefficient(cellulose_met)*ratios[0],
+    lipid_met:rxn.get_coefficient(lipid_met)*(ratios[1]),
+    protein_met:rxn.get_coefficient(protein_met)*(ratios[2])})
+    model.add_rxn(new_rxn)
+
+def resetBiomassComposition2(model,rxn,ratios):
     cellulose_met = [met for met in rxn.metabolites if 'Cellulose' in met.id][0]
     lipid_met = [met for met in rxn.metabolites if 'L_PHOSPHATIDATE' in met.id][0]
     protein_met = [met for met in rxn.metabolites if 'Protein' in met.id][0]
