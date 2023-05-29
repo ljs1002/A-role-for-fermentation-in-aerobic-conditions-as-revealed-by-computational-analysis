@@ -627,6 +627,11 @@ def rootspFBAobj(tissue_model,exclude_from_pFBA=[]):
             exclude_from_pFBA+=[rxn.id] #therefore these fluxes won't be minimised
     #exclude_from_pFBA
 
+    # Remove FBA obj if it's already got one
+    if 'sumvar' in tissue_model.variables:
+        print('Warning: Removing previous pFBA obj or obj of same name')
+        tissue_model.remove_cons_vars(['sumvar','rootspFBAObj'])
+
     Dcoeffs = {}
     sum_var = tissue_model.problem.Variable(name='sumvar')
     # print(sum_var.name)
