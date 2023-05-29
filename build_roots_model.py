@@ -645,6 +645,7 @@ def rootspFBAobj(tissue_model,exclude_from_pFBA=[]):
     pfbaobj=tissue_model.problem.Objective(sum_var,
             direction='min')
     tissue_model.objective = pfbaobj
+    return
 
 def rootsConstrProtons(tissue_model,excl=[]):
     metroot = 'PROTON_'

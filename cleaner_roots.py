@@ -1562,6 +1562,7 @@ def plot_all_sym_transport(sol,rmodel,col,saveas=None,xtick=1):
         #     axes[frow][1].set_xticks(range(len(symdict[met])),labels=['' for x in symdict[met]],rotation=90,fontsize=16)
         axes[frow][0].tick_params(axis='y',labelsize=16)
         axes[frow][1].tick_params(axis='y',labelsize=16)
+        
         axes[frow][0].set_ylim(0,max_met/model_time*1.1)
         axes[frow][1].set_ylim(0,max_met/model_time*1.1)
         if frow==(len(sym_partitions)-1):
@@ -1603,9 +1604,10 @@ def resetBiomassComposition_eBC2(rxn,ratios):
     rxn.add_metabolites({cellulose_met:rxn.get_coefficient(cellulose_met)*(1-ratios[0])/ratios[0],
     lipid_met:rxn.get_coefficient(lipid_met)*(1-ratios[1])/ratios[1],
     protein_met:rxn.get_coefficient(protein_met)*(1-ratios[2])/ratios[2]})
-def vary_biomass_composition(rmodel2,solo=None,cheung_maint=None):
+def vary_biomass_composition(rmodelin,solo=None,cheung_maint=None):
+    rmodel2=quietcopy(rmodelin)
     if not cheung_maint:
-        cheung_maint = rmodel2.reactions.get_by_id("ATPase_balancer").lower_bound
+        cheung_maint = 0.11963617933359695 #rmodel2.reactions.get_by_id("ATPase_balancer").lower_bound
     # carb 1.52, lipid 4.9, protein 32
     biomass_limits = [1.52,4.9,32]
     rmodel2.reactions.get_by_id("ATPase_balancer").lower_bound=cheung_maint
@@ -1616,15 +1618,15 @@ def vary_biomass_composition(rmodel2,solo=None,cheung_maint=None):
     rmodel2.reactions.Phloem_carbon_import.upper_bound=solo['Phloem_carbon_import']
     biomass_rxns = [rxn.id for rxn in rmodel2.reactions if 'Biomass_expanding_cell' in rxn.id]
     for ii in range(3):
-        sols[0]={}
+        sols[ii]={}
         for jj in np.linspace(1,biomass_limits[ii],5):
             these_rats = [1,1,1]
             these_rats[ii]=jj
             for rxn in biomass_rxns:
                 changeBiomassComposition_eBC2(rmodel2.reactions.get_by_id(rxn),these_rats)
-            print(jj)
-            sols[0][jj]=rmodel2.optimize()
-            print(sols[0][jj]['L_LACTATE_ec_epi00'],sols[0][jj]['ETOH_ec_epi00'])
+            # print(ii,jj)
+            sols[ii][jj]=rmodel2.optimize()
+            # print(sols[ii][jj]['L_LACTATE_ec_epi00'],sols[ii][jj]['ETOH_ec_epi00'])
             for rxn in biomass_rxns:
                 resetBiomassComposition_eBC2(rmodel2.reactions.get_by_id(rxn),these_rats)
     rmodel2.reactions.Phloem_carbon_import.lower_bound=0
@@ -1637,7 +1639,7 @@ def vary_biomass_composition(rmodel2,solo=None,cheung_maint=None):
     for maint in maint_vals:
         rmodel2.reactions.get_by_id("ATPase_balancer").lower_bound=maint
         sols[3][maint]=rmodel2.optimize()
-        print(sols[3][maint]['L_LACTATE_ec_epi00'],sols[3][maint]['ETOH_ec_epi00'])
+        # print(sols[3][maint]['L_LACTATE_ec_epi00'],sols[3][maint]['ETOH_ec_epi00'])
     rmodel2.reactions.get_by_id("ATPase_balancer").lower_bound=cheung_maint
     rmodel2.reactions.Phloem_carbon_import.lower_bound=0
     rmodel2.reactions.Phloem_carbon_import.upper_bound=1000
@@ -1650,13 +1652,14 @@ def fermentation_export(rmodel,sols=None,savebool=None):
     model_time=6.6
     if not sols:
         sols=vary_biomass_composition(rmodel)
+        print(sols.keys())
     itc= list(sols[0].keys())
     itl=list(sols[1].keys())
     itp=list(sols[2].keys())
     # itc=itp
     # itl=itp
     itm=list(sols[3].keys())
-    atpase_bal_sum=-sum([rmodel.reactions.ATP_balancer.get_coefficient(x.id) for x in rmodel.reactions.ATP_balancer.metabolites])
+    atpase_bal_sum=-sum([rmodel.reactions.ATPase_balancer.get_coefficient(x.id) for x in rmodel.reactions.ATPase_balancer.metabolites])
     xc = [100*(x-1) for x in itc]#[-(x-1)*cellulose_flux for x in itc]
     xl = [100*(x-1) for x in itl]#[-(x-1)*lipid_flux for x in itl]
     xp = [100*(x-1) for x in itp]#[-(x-1)*protein_flux for x in itp]
@@ -1681,7 +1684,7 @@ def fermentation_export(rmodel,sols=None,savebool=None):
     # temp=ax.set_xlabel(r'Amount component was ' '\n' 'increased in biomass''\n''(mmol/gDW/h)',fontsize=20)
     temp=ax.set_xlabel(r'Percentage component was ' '\n' 'increased in biomass',fontsize=20)
     temp=ax2.set_xlabel('Total tissue maintenance' '\n' '(mmol/gDW/h)',fontsize=20)
-    ax.set_ylabel('Lactate+ethanol export' '\n' '(umol/hr)',fontsize=20)
+    ax.set_ylabel('Lactate+ethanol export' '\n' '(umol/h)',fontsize=20)
     ax.tick_params(labelsize=16)
     ax2.tick_params(labelsize=16)
     plt.yticks(fontsize=16)
@@ -1692,7 +1695,7 @@ def fermentation_export(rmodel,sols=None,savebool=None):
 
 def make_prot_dict(rmodel,sol,cell='_cor',excl=[],thresh=1e-5,metroot = 'PROTON_c'):
     label = 'roots_prot_rxn_pwy_dict'
-    with open('roots_'+label+'.pkl','rb') as file:
+    with open(label+'.pkl','rb') as file:
         prot_rxn_pwy_dict=pkl.load(file)
     mets = [met for met in rmodel.metabolites if metroot in met.id and cell in met.id and not any([x in met.id for x in ['_e_','_ph_','_xy_']+excl])]
     # print(mets)
@@ -1772,7 +1775,7 @@ def plot_protons(prot_budget_dict,model_time=6.6,breakthresh = 0.1,savebool='',s
         # axt.yaxis.set_major_formatter(FormatStrFormatter('%.3f'))
         # axm.yaxis.set_major_formatter(FormatStrFormatter('%.3f'))
         # axb.yaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-        axm.set_ylabel('Protons released' '\n' '(µmol/gDW/hr)',fontsize=20)
+        axm.set_ylabel('Protons released' '\n' '(µmol/gDW/h)',fontsize=20)
         if sumbool:
             # axt2=axt.twinx()
             axm2=axm.twinx()
@@ -1783,13 +1786,13 @@ def plot_protons(prot_budget_dict,model_time=6.6,breakthresh = 0.1,savebool='',s
             axm2.spines['top'].set_visible(False)
             axm2.spines['bottom'].set_visible(False)
             axm2.tick_params(bottom=False)
-            axm2.set_ylabel('Cumulative protons released (µmol/gDW/hr)',fontsize=20)
+            axm2.set_ylabel('Cumulative protons released (µmol/gDW/h)',fontsize=20)
     else:
         fig = plt.figure(figsize=(len(prot_budget_dict)*6.4/20,4.8))
         plt.bar(range(len(prot_budget_dict)),[x/model_time for x in values])
         maxlim = max(max(values),abs(min(values)))/model_time*1.05
         plt.ylim(-maxlim,maxlim)
         temp=plt.xticks(range(len(prot_budget_dict)), keys,rotation='vertical')
-        plt.ylabel('Protons released (µmol/gDW/hr)')
+        plt.ylabel('Protons released (µmol/gDW/h)')
     if savebool:
         plt.savefig('Figures/Protons_'+savebool+'.png',bbox_inches='tight')
