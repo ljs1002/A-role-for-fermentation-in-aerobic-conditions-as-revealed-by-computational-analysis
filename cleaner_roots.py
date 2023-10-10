@@ -1540,11 +1540,11 @@ def plot_all_sym_transport(sol,rmodel,col,saveas=None,xtick=1):
         for it,met in enumerate(list(subset_symp)):
             symdict[met]=[sol[met+'_'+x] for x in transfers_list]
             mets = met[:-2]
-            if mets=='NITRATE':
+            if mets=='NITRATE' and 'Nitrate_c_xy_per00' in rmodel.metabolites:
                 mets='Nitrate'
             txrxn = mets+'_tx_epi00'
             # xyrxn='EX_X_'+mets+'_xy_per00'
-            xyrxn=met+'_xy_per00'
+            xyrxn=met+'_c_xy_per00'
             phrxn = mets+'_ph_c_per00'
             # print(xyrxn)
             symdict[met] = [sol[txrxn]*rmodel.reactions.get_by_id(txrxn).get_coefficient(met[:-2]+'_e_epi00') if txrxn in rmodel.reactions else 0]+symdict[met]+[sum([sol[xyrxn]*rmodel.reactions.get_by_id(xyrxn).get_coefficient(met[:-2]+'_xy_per00') if xyrxn in rmodel.reactions else 0]+[sol[phrxn]*rmodel.reactions.get_by_id(phrxn).get_coefficient(mets+'_ph_per00') if phrxn in rmodel.reactions else 0])]
@@ -1703,7 +1703,7 @@ def make_prot_dict(rmodel,sol,cell='_cor',excl=[],thresh=1e-5,metroot = 'PROTON_
     rxns=[]
     for met in mets:
         for rxn in met.reactions:
-            if sol[rxn.id]:
+            if abs(sol[rxn.id])>1e-5:
                 if rxn.id not in sol_prot_dict.keys():
                     sol_prot_dict[rxn.id]=0
                 sol_prot_dict[rxn.id]+=sol[rxn.id]*rxn.get_coefficient(met.id)
